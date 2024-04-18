@@ -22,9 +22,9 @@ class Router(Device):
             else:
                 pass
         print(f"Router {self.name}: Detected {len(devices_list)} devices, "
-              f"zs{self.registered_device} devices registered by {self.owner}:")
+              f"{len(self.registered_device)} devices registered by {self.owner}:")
         for device in self.registered_device:
-            print(f"\t{device.name}: {device.type}")
+            print(f"\t{device.name}: {device.type}, {device.location}")
 
     def get_distances(self):
         # send get req to all objects, get information back from all objects
@@ -37,18 +37,31 @@ class Router(Device):
                     self.distance_dict(device, to_device)
                 )
 
-        print(f"Initial distances loaded: \n{self.distance_storage}")
+        print(f"Initial distances loaded: {self.distance_storage}")
 
     def update_distance(self, device):
-        for info in self.distance_storage:
+
+        def update(from_d, to_d, ori_data):
+            updated = self.distance_dict(from_d, to_d)
+            print(f"Update Distance data: {ori_data} >>> {updated}")
+            return updated
+
+        for number, info in enumerate(self.distance_storage):
             if info["from"] == device.name:
                 for to_device in self.registered_device:
                     if info["to"] == to_device.name:
-                        info = self.distance_dict(device, to_device)
+                        # Update the dictionary in place
+                        self.distance_storage[number] = update(device, to_device, info)
 
             if info["to"] == device.name:
+                if info["from"] == self.name:
+                    # Update the dictionary in place
+                    self.distance_storage[number] = update(self, device, info)
+
                 for from_device in self.registered_device:
-                    info = self.distance_dict(from_device, device)
+                    # Update the dictionary in place
+                    if info["from"] == from_device.name:
+                        self.distance_storage[number] = update(from_device, device, info)
 
     def distance_dict(self, from_device, to_device):
         return {
@@ -97,3 +110,8 @@ if __name__ == "__main__":
     )
 
     test_router.get_distances()
+    test_router.registered_device[0].location = (0,2,0)
+    test_router.update_distance(test_router.registered_device[0])
+    print(test_router.post_distances())
+
+
