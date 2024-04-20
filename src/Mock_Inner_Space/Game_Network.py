@@ -21,12 +21,6 @@ test_router.scan_devices(
 test_router.get_location_relationship()
 
 
-@Network.route('/distance', methods=['GET'])
-def get_all_distance():
-    # Handle GET request
-    message = test_router.post_distances()
-    print(message)
-    return jsonify(message)
 
 
 @Network.route('/Router', methods=['GET'])
@@ -38,15 +32,14 @@ def get_routers():
     return jsonify(output)
 
 
-@Network.route('/distance/from/<string:from_name>', methods=['GET'])
-def get_distance_by_from_name(from_name):
-    # Handle GET request
-    output = []
-    for i in test_router.post_location_relationship():
-        if from_name == i["from"]:
-            output.append(i)
+@Network.route('/train/location/all', methods=['GET'])
+def get_all_locations():
+    return jsonify(test_router.post_accurate_location_information())
 
-    return jsonify(output)
+
+@Network.route('/train/relationship/all', methods=['GET'])
+def get_all_relationships():
+    return jsonify(test_router.post_location_relationship())
 
 
 if __name__ == '__main__':

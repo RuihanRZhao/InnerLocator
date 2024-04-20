@@ -13,7 +13,8 @@ class Device:
         return {
             "name": self.name,
             "type": self.type,
-            "location": self.location
+            "location": self.location,
+            "owner": self.owner
         }
 
 class Router(Device):
@@ -54,91 +55,60 @@ class Router(Device):
 
     def get_location_relationship(self):
         # send get req to all objects, get information back from all objects
-        for number,device in enumerate(self.registered_device):
-            self.location_data_storage.append(
-                self.location_relationship_dict_generate(self, device)
+        def location_relationship_dict_generate(from_device, to_device):
+            from_position = numpy.array(from_device.location)
+            to_position = numpy.array(to_device.location)
+
+            light_speed = 3e8
+            distance = numpy.linalg.norm(from_position - to_position)
+            ideal_ToA = distance / light_speed
+
+            if from_device.type == "Router":
+                ideal_AoA = {
+                    "theta": numpy.arctan2(to_position[1] - from_position[1], to_position[0] - from_position[0]),
+                    "phi": numpy.arcsin((to_position[2] - from_position[2]) / distance)
+                }
+            else:
+                ideal_AoA = None
+
+            # Add sigma error
+            sigma_ToA = 1e-9
+            sigma_AoA = numpy.radians(5)
+            noisy_ToA = numpy.random.normal(ideal_ToA, sigma_ToA)
+            if ideal_AoA is not None:
+                noisy_AoA = {
+                    "theta": numpy.random.normal(ideal_AoA["theta"], sigma_AoA),
+                    "phi": numpy.random.normal(ideal_AoA["phi"], sigma_AoA)
+                }
+
+            else:
+                noisy_AoA = None
+
+            return {
+                "from": from_device.name,
+                "from_type": from_device.type,
+                "to": to_device.name,
+                "to_type": to_device.type,
+                "ToA": noisy_ToA,
+                "AoA": noisy_AoA
+            }
+
+        location_data_storage = []
+        for number, device in enumerate(self.registered_device):
+            location_data_storage.append(
+                location_relationship_dict_generate(self, device)
             )
-            for to_device in self.registered_device[number+1:]:
-                self.location_data_storage.append(
-                    self.location_relationship_dict_generate(device, to_device)
+            for to in self.registered_device[number+1:]:
+                location_data_storage.append(
+                    location_relationship_dict_generate(device, to)
                 )
 
         print(f"Initial distances loaded: {self.location_data_storage}")
-
-    def update_location_relationship(self, device):
-        def update(from_d, to_d, ori_data):
-            updated = self.location_relationship_dict_generate(from_d, to_d)
-            print(f"Update Distance data: {ori_data} >>> {updated}")
-            return updated
-
-        for number, info in enumerate(self.location_data_storage):
-            if info["from"] == device.name:
-                for to_device in self.registered_device:
-                    if info["to"] == to_device.name:
-                        # Update the dictionary in place
-                        self.location_data_storage[number] = update(device, to_device, info)
-
-            if info["to"] == device.name:
-                if info["from"] == self.name:
-                    # Update the dictionary in place
-                    self.location_data_storage[number] = update(self, device, info)
-
-                for from_device in self.registered_device:
-                    # Update the dictionary in place
-                    if info["from"] == from_device.name:
-                        self.location_data_storage[number] = update(from_device, device, info)
-
-    def location_relationship_dict_generate(self, from_device, to_device):
-        from_position = numpy.array(from_device.location)
-        to_position = numpy.array(to_device.location)
-
-        light_speed = 3e8
-        distance = numpy.linalg.norm(from_position - to_position)
-        ideal_ToA = distance/light_speed
-
-        if from_device.type == "Router":
-            ideal_AoA = {
-                "theta": numpy.arctan2(to_position[1] - from_position[1], to_position[0] - from_position[0]),
-                "phi": numpy.arcsin((to_position[2] - from_position[2]) / distance)
-            }
-        else:
-            ideal_AoA = None
-
-        # Add sigma error
-        sigma_ToA = 1e-9
-        sigma_AoA = numpy.radians(5)
-        noisy_ToA = numpy.random.normal(ideal_ToA, sigma_ToA)
-        if ideal_AoA is not None:
-            noisy_AoA = {
-                "theta": numpy.random.normal(ideal_AoA["theta"], sigma_AoA),
-                "phi": numpy.random.normal(ideal_AoA["phi"], sigma_AoA)
-            }
-
-        else:
-            noisy_AoA = None
-
-        return {
-            "from": from_device.name,
-            "from_type": from_device.type,
-            "to": to_device.name,
-            "to_type": to_device.type,
-            "ToA": noisy_ToA,
-            "AoA": noisy_AoA
-        }
+        return location_data_storage
 
     def post_location_relationship(self):
         # use internet to post to endpoint devices
-        return self.location_data_storage
-
-    def post_accurate_location_information(self):
-        output = [self.location_dict_generate()]
-
-        for element in self.registered_device:
-            output.append(
-                element.location_dict_generate()
-            )
-
-        return output
+        return self.get_location_relationship()
 
 
 class Target(Device):
