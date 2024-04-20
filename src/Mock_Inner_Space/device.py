@@ -1,18 +1,44 @@
+import numpy
+from zmq import DeviceType
 
 
 class Device:
-    def __init__(self, device_name, device_location, owner):
+    def __init__(self, device_name, device_location: tuple, owner):
         self.name = device_name
         self.location = device_location
         self.owner = owner
         self.type = None
 
+    def location_dict_generate(self):
+        return {
+            "name": self.name,
+            "type": self.type,
+            "location": self.location
+        }
+
 class Router(Device):
     def __init__(self, name, location, owner):
         super().__init__(name, location, owner)
         self.type = "Router"
-        self.distance_storage = []
+        self.location_data_storage = []
         self.registered_device = []
+
+    def post_register_device(self):
+        output = []
+
+        def pack_device_info(p_device):
+            return {
+                "name": p_device.name,
+                "type": p_device.type,
+                "location": p_device.location,
+                "owner": p_device.owner
+            }
+
+        output.append(pack_device_info(self))
+        for device in self.registered_device:
+            output.append(pack_device_info(device))
+
+        return output
 
     def scan_devices(self,devices_list):
         # scan how much device has same owner
@@ -21,64 +47,98 @@ class Router(Device):
                 self.registered_device.append(device)
             else:
                 pass
-        print(f"Router {self.name}: Detected {len(devices_list)} devices, "
+        print(f"Router {self.name} [{self.location}]: Detected {len(devices_list)} devices, "
               f"{len(self.registered_device)} devices registered by {self.owner}:")
         for device in self.registered_device:
             print(f"\t{device.name}: {device.type}, {device.location}")
 
-    def get_distances(self):
+    def get_location_relationship(self):
         # send get req to all objects, get information back from all objects
         for number,device in enumerate(self.registered_device):
-            self.distance_storage.append(
-                self.distance_dict(self, device)
+            self.location_data_storage.append(
+                self.location_relationship_dict_generate(self, device)
             )
             for to_device in self.registered_device[number+1:]:
-                self.distance_storage.append(
-                    self.distance_dict(device, to_device)
+                self.location_data_storage.append(
+                    self.location_relationship_dict_generate(device, to_device)
                 )
 
-        print(f"Initial distances loaded: {self.distance_storage}")
+        print(f"Initial distances loaded: {self.location_data_storage}")
 
-    def update_distance(self, device):
-
+    def update_location_relationship(self, device):
         def update(from_d, to_d, ori_data):
-            updated = self.distance_dict(from_d, to_d)
+            updated = self.location_relationship_dict_generate(from_d, to_d)
             print(f"Update Distance data: {ori_data} >>> {updated}")
             return updated
 
-        for number, info in enumerate(self.distance_storage):
+        for number, info in enumerate(self.location_data_storage):
             if info["from"] == device.name:
                 for to_device in self.registered_device:
                     if info["to"] == to_device.name:
                         # Update the dictionary in place
-                        self.distance_storage[number] = update(device, to_device, info)
+                        self.location_data_storage[number] = update(device, to_device, info)
 
             if info["to"] == device.name:
                 if info["from"] == self.name:
                     # Update the dictionary in place
-                    self.distance_storage[number] = update(self, device, info)
+                    self.location_data_storage[number] = update(self, device, info)
 
                 for from_device in self.registered_device:
                     # Update the dictionary in place
                     if info["from"] == from_device.name:
-                        self.distance_storage[number] = update(from_device, device, info)
+                        self.location_data_storage[number] = update(from_device, device, info)
 
-    def distance_dict(self, from_device, to_device):
+    def location_relationship_dict_generate(self, from_device, to_device):
+        from_position = numpy.array(from_device.location)
+        to_position = numpy.array(to_device.location)
+
+        light_speed = 3e8
+        distance = numpy.linalg.norm(from_position - to_position)
+        ideal_ToA = distance/light_speed
+
+        if from_device.type == "Router":
+            ideal_AoA = {
+                "theta": numpy.arctan2(to_position[1] - from_position[1], to_position[0] - from_position[0]),
+                "phi": numpy.arcsin((to_position[2] - from_position[2]) / distance)
+            }
+        else:
+            ideal_AoA = None
+
+        # Add sigma error
+        sigma_ToA = 1e-9
+        sigma_AoA = numpy.radians(5)
+        noisy_ToA = numpy.random.normal(ideal_ToA, sigma_ToA)
+        if ideal_AoA is not None:
+            noisy_AoA = {
+                "theta": numpy.random.normal(ideal_AoA["theta"], sigma_AoA),
+                "phi": numpy.random.normal(ideal_AoA["phi"], sigma_AoA)
+            }
+
+        else:
+            noisy_AoA = None
+
         return {
-                    "from": from_device.name,
-                    "from_type": from_device.type,
-                    "to": to_device.name,
-                    "to_type": to_device.type,
-                    "distance": sum(
-                        [
-                            (ob_dst - rt_dst)**2 for ob_dst, rt_dst in zip(from_device.location, to_device.location)
-                        ]
-                    ) ** 0.5,
+            "from": from_device.name,
+            "from_type": from_device.type,
+            "to": to_device.name,
+            "to_type": to_device.type,
+            "ToA": noisy_ToA,
+            "AoA": noisy_AoA
         }
 
-    def post_distances(self):
+    def post_location_relationship(self):
         # use internet to post to endpoint devices
-        return self.distance_storage
+        return self.location_data_storage
+
+    def post_accurate_location_information(self):
+        output = [self.location_dict_generate()]
+
+        for element in self.registered_device:
+            output.append(
+                element.location_dict_generate()
+            )
+
+        return output
 
 
 class Target(Device):
@@ -102,16 +162,17 @@ if __name__ == "__main__":
 
     test_router.scan_devices(
         [
-            Target("OBJ001", (0,1,0), "Ryen"),
-            Target("OBJ002", (1,0,1), "Valder"),
-            Target("OBJ003", (2,0,1), "Ryen"),
-            Endpoint("IOS001", (-1,1,-1), "Ryen")
+            Router("router002", (2, -2, 1), "Ryen"),
+            Target("OBJ001", (0, 1, 0), "Ryen"),
+            Target("OBJ002", (1, 0, 1), "Valder"),
+            Target("OBJ003", (2, 0, 1), "Ryen"),
+            Endpoint("IOS001", (-1, 1, -1), "Ryen")
         ]
     )
 
-    test_router.get_distances()
+    test_router.get_location_relationship()
     test_router.registered_device[0].location = (0,2,0)
-    test_router.update_distance(test_router.registered_device[0])
-    print(test_router.post_distances())
+    test_router.update_location_relationship(test_router.registered_device[0])
+    print(test_router.post_location_relationship())
 
 
