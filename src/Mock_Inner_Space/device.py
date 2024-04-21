@@ -17,11 +17,11 @@ class Device:
             "owner": self.owner
         }
 
+
 class Router(Device):
     def __init__(self, name, location, owner):
         super().__init__(name, location, owner)
         self.type = "Router"
-        self.location_data_storage = []
         self.registered_device = []
 
     def post_register_device(self):
@@ -41,7 +41,7 @@ class Router(Device):
 
         return output
 
-    def scan_devices(self,devices_list):
+    def scan_devices(self, devices_list):
         # scan how much device has same owner
         for device in devices_list:
             if device.owner == self.owner:
@@ -103,7 +103,7 @@ class Router(Device):
                     location_relationship_dict_generate(device, to)
                 )
 
-        print(f"Initial distances loaded: {self.location_data_storage}")
+        print(f"Initial distances loaded: {location_data_storage}")
         return location_data_storage
 
     def post_location_relationship(self):

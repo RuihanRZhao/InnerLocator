@@ -2,6 +2,7 @@ from device import Device, Router, Target, Endpoint
 from flask import Flask, request, jsonify
 import random,json
 
+
 class Test_Environment:
     def __init__(self):
         self.central_router = Router(
@@ -69,6 +70,12 @@ class Test_Environment:
         for device in self.device_list:
             self.device_data_log.append(device.location_dict_generate())
 
+        # with open("device.dat", "a") as output:
+        #     output.write(",")
+        #     output.write(json.dumps({
+        #         "environment":self.device_data_log
+        #     },indent=4))
+
     def start(self):
         self.central_router.scan_devices(self.device_list)
         self.central_router.get_location_relationship()
@@ -89,4 +96,3 @@ if __name__ == "__main__":
     env = Test_Environment()
     env.start()
     env.run()
-
